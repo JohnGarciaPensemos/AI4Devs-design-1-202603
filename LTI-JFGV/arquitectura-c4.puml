@@ -1,0 +1,247 @@
+' =====================================================================
+'  ATS — Modelo C4 (Contexto, Contenedores, Componentes)
+'  Alineado con: diagrama_de_arquitectura.png (OCI, Moderate Scaling)
+'  Renderizar con PlantUML + librería C4 (incluida vía !include online)
+' =====================================================================
+
+@startuml C4_Contexto_ATS
+!include https://raw.githubusercontent.com/plantuml-stdlib/C4-PlantUML/master/C4_Context.puml
+title C4 — Nivel 1: Contexto del sistema (ATS)
+
+LAYOUT_WITH_LEGEND()
+
+Person(candidato, "Candidato", "Persona que busca empleo y postula a vacantes. Acceso gratuito; compromiso de veracidad.")
+Person(reclutador, "Reclutador / Hiring Manager", "Usuario de la organización cliente que define vacantes, evalúa y decide.")
+Person(adminOrg, "Administrador de organización", "Usuario cliente que gestiona cuenta, miembros, roles y configuración.")
+
+System(ats, "ATS — Plataforma de reclutamiento B2B", "Gestiona vacantes, candidaturas, pipeline, comunicaciones y trazabilidad multi-país.")
+
+System_Ext(email, "Proveedor de email transaccional", "SendGrid / SES / Mailgun")
+System_Ext(pushSms, "Push / SMS", "Twilio")
+System_Ext(calendar, "Calendario", "Google Calendar / Microsoft 365")
+System_Ext(jobBoards, "Job boards", "LinkedIn, Indeed, InfoJobs…")
+System_Ext(bgCheck, "Verificación de antecedentes", "Checkr / Sterling / Onfido")
+System_Ext(refs, "Verificación de referencias", "Servicio externo o flujo de referencias")
+System_Ext(assess, "Evaluación técnica", "HackerRank / Codility / TestGorilla")
+System_Ext(video, "Videollamada", "Zoom / Meet / Teams")
+System_Ext(hris, "HRIS / Nómina", "Workday / SAP SuccessFactors / BambooHR")
+System_Ext(esign, "Firma electrónica", "DocuSign / Adobe Sign")
+System_Ext(sso, "Identidad cliente (SSO)", "Okta / Azure AD / Google Workspace (SAML/OIDC)")
+
+Rel(candidato, ats, "Explora vacantes, se registra, postula, consulta estado", "HTTPS")
+Rel(reclutador, ats, "Define vacantes, gestiona pipeline, evalúa, comunica", "HTTPS")
+Rel(adminOrg, ats, "Configura organización, miembros y roles", "HTTPS")
+
+Rel(ats, email, "Envía emails transaccionales", "SMTP / API")
+Rel(ats, pushSms, "Envía SMS y push", "API")
+Rel(ats, calendar, "Crea/actualiza eventos de entrevista", "OAuth + API")
+Rel(ats, jobBoards, "Publica vacantes (multi-posting)", "API")
+Rel(ats, bgCheck, "Solicita verificaciones", "API + webhooks")
+Rel(ats, refs, "Solicita referencias", "API + webhooks")
+Rel(ats, assess, "Lanza pruebas y recibe resultados", "API + webhooks")
+Rel(ats, video, "Genera enlaces de videollamada", "OAuth + API")
+Rel(ats, hris, "Sincroniza candidato contratado", "API")
+Rel(ats, esign, "Envía oferta para firma", "API + webhooks")
+Rel_Back(ats, sso, "Autentica usuarios cliente", "SAML / OIDC")
+
+@enduml
+
+
+@startuml C4_Contenedores_ATS
+!include https://raw.githubusercontent.com/plantuml-stdlib/C4-PlantUML/master/C4_Container.puml
+title C4 — Nivel 2: Contenedores (ATS sobre OCI)
+
+LAYOUT_WITH_LEGEND()
+
+Person(candidato, "Candidato")
+Person(usrCliente, "Usuarios cliente", "Reclutador / HM / Admin")
+
+System_Boundary(ats, "ATS — Plataforma de reclutamiento") {
+
+  Container(spa, "Web/Mobile SPA", "React / Vue", "UI para candidatos y usuarios cliente.")
+  Container(cdn, "OCI CDN", "Edge", "Sirve assets estáticos del SPA.")
+  Container(lb, "OCI Load Balancer", "Edge / WAF", "Termina TLS y enruta tráfico de API.")
+
+  Container(gw, "API Gateway", "REST / GraphQL", "Punto único de entrada: authN/Z, rate-limit, routing.")
+
+  ContainerDb(db, "Autonomous DB (compartida)", "OCI Autonomous DB", "Esquema multi-tenant; aislamiento por organizacion_id.")
+  ContainerDb(objStore, "Object Storage", "OCI Object Storage", "CVs, adjuntos, exportaciones; URLs firmadas.")
+  ContainerDb(cache, "Caché / colas", "Redis + bus de eventos", "Sesiones, idempotencia, jobs y eventos asíncronos.")
+
+  Container(svcVac, "Vacancy Lifecycle Service", "Microservicio", "Vacantes: borrador → publicada → pausada → cerrada → reabierta; clonación.")
+  Container(svcCand, "Candidate Application & Tracking Service", "Microservicio", "Candidaturas, pipeline, etapas, decisiones, comunicación.")
+  Container(svcOrg, "Company & Recruiter Mgmt Service", "Microservicio", "Organizaciones, miembros, roles y permisos.")
+  Container(svcId, "Identity & Privacy Service", "Microservicio", "Usuarios, sesiones, SSO, consentimientos, retención.")
+  Container(svcNotes, "Internal Notes & Fairness Service", "Microservicio", "Notas internas, evaluaciones estructuradas, criterios.")
+  Container(svcAudit, "Audit & Traceability Service", "Microservicio", "Eventos de dominio, historial, exportación auditada.")
+  Container(svcInteg, "Integrations / Adapters", "Workers + colas", "Adaptadores hacia terceros (email, calendar, HRIS, etc.)")
+}
+
+System_Ext(email, "Email transaccional")
+System_Ext(calendar, "Calendario")
+System_Ext(jobBoards, "Job boards")
+System_Ext(bgCheck, "Background check")
+System_Ext(assess, "Assessments")
+System_Ext(hris, "HRIS / Payroll")
+System_Ext(esign, "Firma electrónica")
+System_Ext(sso, "SSO IdP cliente")
+
+Rel(candidato, cdn, "Carga UI", "HTTPS")
+Rel(usrCliente, cdn, "Carga UI", "HTTPS")
+Rel(candidato, lb, "API calls", "HTTPS")
+Rel(usrCliente, lb, "API calls", "HTTPS")
+
+Rel(cdn, spa, "Sirve assets")
+Rel(lb, gw, "Reenvía", "HTTPS")
+Rel(spa, gw, "Llama API", "HTTPS / JSON")
+
+Rel(gw, svcVac, "Rutas /vacancies", "REST")
+Rel(gw, svcCand, "Rutas /applications", "REST")
+Rel(gw, svcOrg, "Rutas /orgs, /members", "REST")
+Rel(gw, svcId, "Rutas /auth, /users", "REST")
+Rel(gw, svcNotes, "Rutas /notes, /scorecards", "REST")
+Rel(gw, svcAudit, "Rutas /events, /exports", "REST")
+
+Rel(svcVac, db, "Lee/escribe", "SQL")
+Rel(svcCand, db, "Lee/escribe", "SQL")
+Rel(svcOrg, db, "Lee/escribe", "SQL")
+Rel(svcId, db, "Lee/escribe", "SQL")
+Rel(svcNotes, db, "Lee/escribe", "SQL")
+Rel(svcAudit, db, "Append-only", "SQL")
+
+Rel(svcCand, objStore, "Sube/lee adjuntos", "S3-compat")
+Rel(svcCand, cache, "Idempotencia + eventos", "Redis / Bus")
+Rel(svcVac, cache, "Eventos de dominio", "Bus")
+Rel(svcAudit, cache, "Consumidor de eventos", "Bus")
+
+Rel(svcCand, svcInteg, "Solicita acciones de terceros", "Eventos")
+Rel(svcVac, svcInteg, "Publicación multi-posting", "Eventos")
+Rel(svcInteg, email, "Envía email", "API")
+Rel(svcInteg, calendar, "Crea/actualiza eventos", "API")
+Rel(svcInteg, jobBoards, "Publica vacantes", "API")
+Rel(svcInteg, bgCheck, "Solicita verificación", "API + webhook")
+Rel(svcInteg, assess, "Lanza pruebas", "API + webhook")
+Rel(svcInteg, hris, "Sincroniza contratado", "API")
+Rel(svcInteg, esign, "Envía oferta a firma", "API + webhook")
+
+Rel(svcId, sso, "Federación", "SAML/OIDC")
+
+@enduml
+
+
+@startuml C4_Componentes_CandidateAppTracking
+!include https://raw.githubusercontent.com/plantuml-stdlib/C4-PlantUML/master/C4_Component.puml
+title C4 — Nivel 3: Componentes del Candidate Application & Tracking Service
+
+LAYOUT_WITH_LEGEND()
+
+Container(spa, "Web/Mobile SPA", "React/Vue")
+Container(gw, "API Gateway", "REST/GraphQL")
+ContainerDb(db, "Autonomous DB", "OCI")
+ContainerDb(objStore, "Object Storage", "OCI")
+ContainerDb(bus, "Bus de eventos / colas", "Kafka / OCI Streaming + Redis")
+Container(svcVac, "Vacancy Lifecycle Service", "Microservicio")
+Container(svcOrg, "Company & Recruiter Mgmt", "Microservicio")
+Container(svcId, "Identity & Privacy", "Microservicio")
+Container(svcNotes, "Notes & Fairness", "Microservicio")
+Container(svcAudit, "Audit & Traceability", "Microservicio")
+Container(svcInteg, "Integrations / Adapters", "Workers")
+
+Container_Boundary(svcCand, "Candidate Application & Tracking Service") {
+
+  Component(apiAppl, "Application API", "REST controller", "Endpoints públicos (candidato) y privados (cliente) para candidaturas.")
+  Component(apiPipe, "Pipeline API", "REST controller", "Operaciones sobre etapas, transiciones y resoluciones.")
+  Component(apiDocs, "Documents API", "REST controller", "Sube CV/anexos: emite URLs firmadas, antivirus async.")
+  Component(apiStatus, "Candidate Status API", "REST controller", "Vista del candidato sobre estado e historial visible.")
+
+  Component(appSvc, "Application Service", "Use case orchestrator", "Crear candidatura, validar duplicados, asignar etapa inicial.")
+  Component(pipeSvc, "Pipeline Orchestrator", "Use case orchestrator", "Mueve candidaturas entre etapas; valida transiciones según vacante.")
+  Component(decSvc, "Decision Service", "Use case orchestrator", "Marca contratado/descartado; dispara HRIS y comunicaciones.")
+  Component(commSvc, "Communication Coordinator", "Use case orchestrator", "Selecciona plantilla, contexto y canal; delega a Integrations.")
+  Component(schedSvc, "Interview Scheduling", "Use case orchestrator", "Propone slots, persiste cita, sincroniza con calendario externo.")
+  Component(dupSvc, "Duplicate & Identity Resolver", "Domain service", "Persona vs nuevas candidaturas; políticas de re-postulación.")
+
+  Component(domain, "Application Domain Model", "DDD aggregate", "Aggregate Candidatura: estado_resolucion, etapa_actual, invariantes.")
+  Component(policy, "Stage Transition Policy", "Domain policy", "Reglas: transiciones permitidas por etapa y rol.")
+  Component(consent, "Consent Guard", "Domain policy", "Verifica consentimiento del candidato para acciones sensibles (ej. background).")
+
+  Component(repoAppl, "Application Repository", "Repository (SQL)", "Persistencia de Candidatura, etapa actual, resolución.")
+  Component(repoEvt, "Application Event Store", "Repository (SQL append-only)", "Eventos de candidatura para historial auditable.")
+  Component(repoDocs, "Document Repository", "Repository", "Metadatos de documentos y referencia a Object Storage.")
+
+  Component(eventsOut, "Domain Event Publisher", "Outbox + Bus client", "Publica ApplicationCreated, StageChanged, Hired, Rejected…")
+  Component(eventsIn, "Event Consumer", "Bus subscriber", "Escucha VacancyClosed, BackgroundCheckCompleted, AssessmentCompleted…")
+
+  Component(idemp, "Idempotency & Concurrency", "Cross-cutting", "Claves de idempotencia, locks optimistas para transiciones.")
+  Component(audit, "Audit Hook", "Cross-cutting", "Emite trazas estructuradas a Audit & Traceability.")
+  Component(authz, "AuthZ Adapter", "Cross-cutting", "Evalúa permisos por rol y por organización (multi-tenant).")
+}
+
+' Actores externos al servicio
+Rel(spa, gw, "Llamadas", "HTTPS")
+Rel(gw, apiAppl, "Rutea /applications", "REST")
+Rel(gw, apiPipe, "Rutea /applications/{id}/stage", "REST")
+Rel(gw, apiDocs, "Rutea /applications/{id}/documents", "REST")
+Rel(gw, apiStatus, "Rutea /me/applications", "REST")
+
+' API → Services
+Rel(apiAppl, appSvc, "Crear/Listar/Obtener candidatura")
+Rel(apiAppl, dupSvc, "Resolver persona / duplicados")
+Rel(apiPipe, pipeSvc, "Cambiar etapa")
+Rel(apiPipe, decSvc, "Marcar contratado/descartado")
+Rel(apiDocs, repoDocs, "CRUD metadatos")
+Rel(apiStatus, repoAppl, "Lectura filtrada por candidato")
+
+' Services → Domain & Repos
+Rel(appSvc, domain, "Construye/valida aggregate")
+Rel(pipeSvc, domain, "Aplica transición")
+Rel(decSvc, domain, "Aplica resolución")
+Rel(domain, policy, "Consulta reglas")
+Rel(decSvc, consent, "Verifica consentimientos")
+Rel(appSvc, repoAppl, "Persiste")
+Rel(pipeSvc, repoAppl, "Actualiza etapa")
+Rel(decSvc, repoAppl, "Actualiza resolución")
+Rel(appSvc, repoEvt, "Append evento")
+Rel(pipeSvc, repoEvt, "Append evento")
+Rel(decSvc, repoEvt, "Append evento")
+
+' Cross-cutting
+Rel(apiAppl, idemp, "Aplica clave de idempotencia")
+Rel(apiPipe, idemp, "Aplica clave de idempotencia")
+Rel(apiAppl, authz, "Verifica permiso")
+Rel(apiPipe, authz, "Verifica permiso")
+Rel(apiDocs, authz, "Verifica permiso")
+Rel(apiStatus, authz, "Verifica permiso (candidato dueño)")
+Rel(appSvc, audit, "Emite traza")
+Rel(pipeSvc, audit, "Emite traza")
+Rel(decSvc, audit, "Emite traza")
+
+' Persistencia → contenedores
+Rel(repoAppl, db, "SQL")
+Rel(repoEvt, db, "SQL append-only")
+Rel(repoDocs, db, "SQL (metadatos)")
+Rel(apiDocs, objStore, "URLs firmadas (PUT/GET)", "HTTPS")
+
+' Eventos
+Rel(appSvc, eventsOut, "ApplicationCreated")
+Rel(pipeSvc, eventsOut, "StageChanged")
+Rel(decSvc, eventsOut, "Hired / Rejected")
+Rel(commSvc, eventsOut, "CommunicationRequested")
+Rel(schedSvc, eventsOut, "InterviewScheduled")
+Rel(eventsOut, bus, "Publica", "Streams / Kafka")
+
+Rel(bus, eventsIn, "Suscribe", "Streams / Kafka")
+Rel(eventsIn, pipeSvc, "BackgroundCheckCompleted → avanzar/bloquear etapa")
+Rel(eventsIn, pipeSvc, "AssessmentCompleted → registrar resultado")
+Rel(eventsIn, appSvc, "VacancyClosed → cerrar candidaturas activas")
+
+' Comunicación con otros servicios
+Rel(authz, svcId, "Resuelve identidad / rol", "REST/JWT")
+Rel(authz, svcOrg, "Resuelve membresía y permisos", "REST")
+Rel(commSvc, svcInteg, "Solicita envío email/SMS/calendar", "Eventos")
+Rel(decSvc, svcInteg, "Solicita HRIS sync / e-signature", "Eventos")
+Rel(eventsIn, svcVac, "Lee etapas de la vacante", "REST")
+Rel(audit, svcAudit, "Stream de eventos", "Bus")
+Rel(decSvc, svcNotes, "Lee evaluaciones para resolución", "REST")
+
+@enduml

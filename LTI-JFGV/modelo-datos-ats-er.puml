@@ -1,0 +1,157 @@
+@startuml modelo_datos_ats_er
+!theme plain
+title Modelo ER — ATS (núcleo + entidades fundamentales adicionales)
+skinparam linetype ortho
+hide circle
+
+' --- Entidades existentes ampliadas ---
+entity "organizacion" as org {
+  * id : uuid <<PK>>
+  --
+  * nombre_legal : text
+  nombre_comercial : text
+  * pais_iso : char(2)
+  zona_horaria : text
+  * estado_cuenta : text
+  * creado_en : timestamptz
+  actualizado_en : timestamptz
+}
+
+entity "usuario" as usr {
+  * id : uuid <<PK>>
+  --
+  * email_normalizado : text <<unique>>
+  password_hash : text
+  * creado_en : timestamptz
+  ultimo_acceso_en : timestamptz
+}
+
+entity "miembro_organizacion" as mem {
+  * id : uuid <<PK>>
+  --
+  * organizacion_id : uuid <<FK>>
+  * usuario_id : uuid <<FK>>
+  * rol : text
+  * activo : boolean
+  * creado_en : timestamptz
+  .. UK (organizacion_id, usuario_id)
+}
+
+entity "persona" as per {
+  * id : uuid <<PK>>
+  --
+  * usuario_id : uuid <<FK>>
+  nombre_completo : text
+  telefono : text
+  residencia_pais_iso : char(2)
+  * creado_en : timestamptz
+  .. UK (usuario_id)
+}
+
+entity "vacante" as vac {
+  * id : uuid <<PK>>
+  --
+  * organizacion_id : uuid <<FK>>
+  vacante_origen_id : uuid <<FK>>\n<<clon>>
+  * titulo : text
+  descripcion : text
+  * estado : text
+  publicada_en : timestamptz
+  cerrada_en : timestamptz
+  * creado_en : timestamptz
+  actualizado_en : timestamptz
+}
+
+entity "vacante_etapa" as vete {
+  * id : uuid <<PK>>
+  --
+  * vacante_id : uuid <<FK>>
+  * orden : int
+  * nombre : text
+  * tipo : text
+  .. UK (vacante_id, orden)
+}
+
+entity "candidatura" as cand {
+  * id : uuid <<PK>>
+  --
+  * vacante_id : uuid <<FK>>
+  * persona_id : uuid <<FK>>
+  etapa_actual_id : uuid <<FK>>
+  * estado_resolucion : text
+  descartada_motivo_interno : text
+  * creado_en : timestamptz
+  actualizado_en : timestamptz
+  .. UK (vacante_id, persona_id)
+}
+
+entity "candidatura_evento" as cev {
+  * id : uuid <<PK>>
+  --
+  * candidatura_id : uuid <<FK>>
+  * tipo : text
+  vacante_etapa_id : uuid <<FK>>
+  detalle_json : jsonb
+  actor_usuario_id : uuid <<FK>>
+  * ocurrido_en : timestamptz
+}
+
+entity "nota_interna" as nota {
+  * id : uuid <<PK>>
+  --
+  * candidatura_id : uuid <<FK>>
+  * autor_miembro_id : uuid <<FK>>
+  * cuerpo : text
+  * creado_en : timestamptz
+}
+
+entity "documento" as doc {
+  * id : uuid <<PK>>
+  --
+  * candidatura_id : uuid <<FK>>
+  * tipo : text
+  * uri_almacenamiento : text
+  nombre_archivo : text
+  * subido_en : timestamptz
+}
+
+' --- Relaciones (cardinalidad aproximada) ---
+org ||--o{ mem : "tiene miembros"
+usr ||--o{ mem : "actúa en org."
+usr ||--o| per : "1 perfil candidato\n(típico)"
+
+org ||--o{ vac : "publica vacantes"
+vac }o--o| vac : "clonada desde\n(vacante_origen_id)"
+
+vac ||--o{ vete : "define pipeline"
+vac ||--o{ cand : "recibe"
+per ||--o{ cand : "postula"
+
+vete ||--o{ cand : "etapa actual\n(etapa_actual_id)"
+vete ||--o{ cev : "referencia etapa\n(opcional)"
+
+cand ||--o{ cev : "historial auditable"
+cand ||--o{ nota : "comentarios equipo"
+cand ||--o{ doc : "CV / anexos"
+
+mem ||--o{ nota : "autor (interno)"
+
+usr ||--o{ cev : "actor (nullable:\nsistema)"
+
+note right of mem
+  **Roles cliente:** admin, reclutador,\nhiring manager — gobierno de acceso.
+end note
+
+note bottom of cand
+  **Multi-postulación:** muchas filas\n(persona_id distinto vacante_id).\n**Re-contratado en otro sitio:**\nno impide nueva candidatura.\n**Historial org:** join vacante → candidatura.
+end note
+
+note bottom of vac
+  **Reabrir:** misma fila, transición de estado\n+ auditoría en columnas o eventos.\n**Clonar:** nueva fila con vacante_origen_id.
+end note
+
+note bottom of cev
+  **Historial completo:** eventos de cambio de etapa,\ncomunicaciones registradas, etc.\nÍndice típico: (candidatura_id, ocurrido_en DESC).
+end note
+
+@enduml

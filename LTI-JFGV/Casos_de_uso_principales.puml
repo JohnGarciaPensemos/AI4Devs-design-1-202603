@@ -1,0 +1,112 @@
+@startuml ATS_CasosDeUso_Basicos
+title Diagrama de casos de uso — ATS (funcionalidad básica)\nLímite del sistema: plataforma de reclutamiento
+
+skinparam packageStyle rectangle
+skinparam handwritten false
+skinparam shadowing false
+
+left to right direction
+
+' --- Actores humanos: lado CLIENTE (organización) ---
+actor "Administrador de\norganización" as Admin <<Cliente>>
+actor "Reclutador" as Rec <<Cliente>>
+actor "Responsable de contratación\n(Hiring Manager)" as HM <<Cliente>>
+
+' --- Actor humano: lado CANDIDATO ---
+actor "Candidato" as Cand <<Candidato>>
+
+' --- Actor secundario (sistema externo) ---
+actor "Canal de notificaciones\n(email / push)" as Notif <<Sistema>>
+
+rectangle "Sistema: ATS" {
+
+  package "Acceso y gobierno (cliente)" as P_Gov {
+    usecase "UC1: Registrar organización" as UC1
+    usecase "UC2: Autenticar usuario" as UC2
+    usecase "UC3: Gestionar usuarios,\nroles y permisos" as UC3
+  }
+
+  package "Gestión de vacantes (cliente)" as P_Job {
+    usecase "UC4: Definir y editar vacante" as UC4
+    usecase "UC5: Publicar o pausar vacante" as UC5
+    usecase "UC6: Cerrar vacante" as UC6
+  }
+
+  package "Candidatura (candidato)" as P_App {
+    usecase "UC7: Explorar vacantes públicas" as UC7
+    usecase "UC8: Registrar perfil\nde candidato" as UC8
+    usecase "UC9: Enviar candidatura" as UC9
+    usecase "UC10: Consultar estado de\nmis candidaturas" as UC10
+  }
+
+  package "Selección y comunicación (cliente)" as P_Sel {
+    usecase "UC11: Ver candidatos por vacante\n(embudo / lista)" as UC11
+    usecase "UC12: Filtrar y buscar candidatos" as UC12
+    usecase "UC13: Cambiar etapa del candidato" as UC13
+    usecase "UC14: Añadir nota o evaluación interna" as UC14
+    usecase "UC15: Marcar resolución\n(contratado / descartado)" as UC15
+    usecase "UC16: Enviar comunicación al candidato" as UC16
+  }
+}
+
+' --- Asociaciones: usuarios CLIENTE ---
+Admin --> UC1
+Admin --> UC2
+Admin --> UC3
+
+Rec --> UC2
+Rec --> UC4
+Rec --> UC5
+Rec --> UC6
+Rec --> UC11
+Rec --> UC12
+Rec --> UC13
+Rec --> UC14
+Rec --> UC15
+Rec --> UC16
+
+HM --> UC2
+HM --> UC11
+HM --> UC12
+HM --> UC13
+HM --> UC14
+HM --> UC15
+' HM puede comunicar según política de la org. (asociación opcional en RBAC)
+HM --> UC16
+
+' --- Asociaciones: CANDIDATO ---
+Cand --> UC2
+Cand --> UC7
+Cand --> UC8
+Cand --> UC9
+Cand --> UC10
+
+' --- Relaciones entre casos de uso (UML) ---
+UC5 ..> UC4 : <<include>>\n(publicar requiere\nvacante definida)
+UC9 ..> UC2 : <<include>>\n(aplicar requiere\nidentidad candidato)
+UC11 ..> UC4 : <<include>>\n(embudo acorde a\netapas de la vacante)
+UC15 ..> UC16 : <<extend>>\n(condición: política\nnotificar al resolver)
+
+' --- Comunicación con actor secundario ---
+UC16 --> Notif : <<send>>
+UC13 --> Notif : <<send>>\n(opcional:\nnotificar cambio\nde etapa)
+
+note right of UC9
+  **Regla de negocio típica:** una candidatura válida
+  referencia exactamente una vacante publicada
+  y un perfil de candidato autenticado.
+end note
+
+note bottom of UC14
+  **Visibilidad:** solo usuarios del cliente;
+  el candidato no accede a UC14.
+end note
+
+legend
+  |= Estereotipo |= Significado |
+  | <<Cliente>> | Usuario empleado por la organización contratante |
+  | <<Candidato>> | Usuario externo que compite por una vacante |
+  | <<Sistema>> | Actor secundario: infraestructura de notificación |
+endlegend
+
+@enduml
